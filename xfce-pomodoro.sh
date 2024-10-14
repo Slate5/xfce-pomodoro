@@ -232,11 +232,28 @@ notify_stats() {
     local log_lines
     local ret
 
-    local button_newer='-A newer=Newer'
-    local button_older='-A older=Older'
-    local button_oldest='-A oldest=Oldest'
-    local button_newest='-A newest=Newest'
-    local cur_buttons="${button_older} ${button_oldest}"
+    # Button sets depend on a current page and number of pages
+    local first_page_buttons
+    local mid_page_buttons
+    local last_page_buttons
+    # Holds current set of buttons
+    local cur_buttons
+    local page_num
+
+    case $(( (lines_max - 1) / line_num )) in
+        0) ;;
+        1)
+            first_page_buttons="-A older=Older"
+            last_page_buttons="-A newer=Newer"
+            ;;
+        *)
+            first_page_buttons="-A older=Older -A oldest=Oldest"
+            mid_page_buttons="-A older=Older -A newer=Newer"
+            last_page_buttons="-A newest=Newest -A newer=Newer"
+            ;;
+    esac
+
+    cur_buttons="${first_page_buttons}"
 
     notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true -A back=Back'
@@ -245,35 +262,39 @@ notify_stats() {
         log_lines="$(tail -n ${step} ${LOG} | head -n ${line_num} |
                sed -E 's,(.*:\s*)([0-9]+),\1 <b>\2</b>\t\t,')"
 
+        if (( lines_max > line_num )); then
+            page_num=" ($(( step / line_num )))"
+        fi
+
         ret="$(notify-send ${notify_args} ${cur_buttons} \
-               -- "Pomodoro LOG ($(( step / line_num ))):" $'\n'"${log_lines}"$'\n')"
+               -- "Pomodoro LOG${page_num}:" $'\n'"${log_lines}"$'\n')"
 
         case "${ret}" in
             'older')
                 (( step += line_num ))
 
                 if (( step >= lines_max )); then
-                    cur_buttons="${button_newest} ${button_newer}"
+                    cur_buttons="${last_page_buttons}"
                 else
-                    cur_buttons="${button_older} ${button_newer}"
+                    cur_buttons="${mid_page_buttons}"
                 fi
                 ;;
             'newer')
                 (( step -= line_num ))
 
                 if (( step == line_num )); then
-                    cur_buttons="${button_older} ${button_oldest}"
+                    cur_buttons="${first_page_buttons}"
                 else
-                    cur_buttons="${button_older} ${button_newer}"
+                    cur_buttons="${mid_page_buttons}"
                 fi
                 ;;
             'oldest')
                 (( step = (lines_max / line_num + 1) * line_num ))
-                cur_buttons="${button_newest} ${button_newer}"
+                cur_buttons="${last_page_buttons}"
                 ;;
             'newest')
                 (( step = line_num ))
-                cur_buttons="${button_older} ${button_oldest}"
+                cur_buttons="${first_page_buttons}"
                 ;;
             'back')
                 echo "${ret}"
