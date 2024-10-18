@@ -3,7 +3,11 @@
 # LOG related globals
 declare -g LOG
 declare -g PROJECT
+declare -g DEBUG
+declare -g NOTIFY_ONLY
 declare -g DIR="$(dirname $0)"
+declare -g REAL_LOG="${DIR}/.pomodoro.log"
+declare -g DEBUG_LOG="${DIR}/.DEBUG.log"
 declare -g DATE="$(date +%F)"
 declare -g LOG_MSG='Work sessions today%s:'
 
@@ -43,8 +47,8 @@ abort_msg() {
 parse_args() {
     local args exit_code
 
-    args="$(getopt -o d:wms:p:h \
-                   -l day:,week,month,sessions:,project:,weekend-pct:,help \
+    args="$(getopt -o d:wms:p:nh \
+                   -l day:,week,month,sessions:,project:,weekend-pct:,notify,help \
                    -n "$(basename "${0}")" -- "${@}")"
 
     if (( (exit_code=$?) != 0 )); then
@@ -108,6 +112,11 @@ parse_args() {
 
                 WEEKEND_PCT=${2}
                 shift 2
+                ;;
+            '-n'|'--notify')
+                NOTIFY_ONLY='true'
+                LOG="${REAL_LOG}"
+                shift
                 ;;
             '-h'|'--help')
                 help_text
@@ -183,7 +192,11 @@ notify_finish() {
 
     notify_args+="-a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true '
-    notify_args+='-A close=Close -A stats=Stats -A discard=Discard -- Pomodoro'
+    notify_args+='-A close=Close -A stats=Stats '
+    if [ -z "${NOTIFY_ONLY}" ]; then
+        notify_args+='-A discard=Discard '
+    fi
+    notify_args+='-- Pomodoro'
 
     if (( SESSIONS_DONE > 1 )); then
         msg+="<b>${SESSIONS_DONE}</b> sessions done ${TIME_FRAME_MSG}${PROJECT}."
@@ -324,10 +337,10 @@ main() {
 
     # Run in debug mode when executed from terminal
     if [ ! -t 0 ]; then
-        LOG="${DIR}/.pomodoro.log"
+        LOG="${REAL_LOG}"
     else
         DEBUG=ON
-        LOG="${DIR}/.DEBUG.log"
+        LOG="${DEBUG_LOG}"
     fi
 
     # First time usage or DEBUG mode, touch LOG
@@ -341,11 +354,14 @@ main() {
     # Add project (if any) to log msg
     LOG_MSG="$(printf -- "${LOG_MSG}" "${PROJECT}")"
 
-    # Log by having one uniqe result per day and/or per project
-    log_result
+    # Store the result and notify with sound only when the `-n` flag isn't used
+    if [ -z "${NOTIFY_ONLY}" ]; then
+        # Log by having one uniqe result per day and/or per project
+        log_result
 
-    # Gently prompt the user that the session has ended
-    paplay ${DIR}/assets/Gilfoyle_alarm.ogg &
+        # Gently prompt the user that the session has ended
+        paplay ${DIR}/assets/Gilfoyle_alarm.ogg &
+    fi
 
     # Modify session goal during weekends (--weekend-pct)
     if [ -n "${WEEKEND_PCT}" ] && (( $(date +%u) > 5 )); then
@@ -381,7 +397,7 @@ main() {
     done
 
     # Warn the user about .DEBUG.log if it's not needed any more
-    if [ -n "${DEBUG}" ]; then
+    if [ -n "${DEBUG}" -a -z "${NOTIFY_ONLY}" ]; then
         printf "\033[35mFeel free to delete ${LOG}\033[m\n" >&2
     fi
 }
