@@ -238,7 +238,8 @@ notify_stats() {
     local notify_args
     local line_num=10
     local step=${line_num}
-    local lines_max=$(wc -l ${LOG} | awk '{print $1}')
+    local total_log_lines=$(wc -l ${LOG} | awk '{print $1}')
+    local total_log_pages=$(( (total_log_lines - 1) / line_num + 1 ))
     local log_lines
     local ret
 
@@ -250,8 +251,8 @@ notify_stats() {
     local cur_buttons
     local page_num
 
-    case $(( (lines_max - 1) / line_num )) in
-        0) ;;
+    case $(( (total_log_lines - 1) / line_num )) in
+        0)  ;;
         1)
             first_page_buttons="-A older=Older"
             last_page_buttons="-A newer=Newer"
@@ -272,8 +273,12 @@ notify_stats() {
         log_lines="$(tail -n ${step} ${LOG} | head -n ${line_num} |
                sed -E 's,(.*:\s*)([0-9]+),\1 <b>\2</b>\t\t,')"
 
-        if (( lines_max > line_num )); then
-            page_num=" ($(( step / line_num )))"
+        if (( total_log_lines > line_num )); then
+            page_num=" ($(( step / line_num ))/${total_log_pages})"
+        fi
+
+        if (( total_log_lines == 0 )); then
+            log_lines="Didn't even start and you <i>already</i> expect results..."
         fi
 
         ret="$(notify-send ${notify_args} ${cur_buttons} \
@@ -283,7 +288,7 @@ notify_stats() {
             'older')
                 (( step += line_num ))
 
-                if (( step >= lines_max )); then
+                if (( step >= total_log_lines )); then
                     cur_buttons="${last_page_buttons}"
                 else
                     cur_buttons="${mid_page_buttons}"
@@ -299,7 +304,7 @@ notify_stats() {
                 fi
                 ;;
             'oldest')
-                (( step = (lines_max / line_num + 1) * line_num ))
+                (( step = (total_log_lines / line_num + 1) * line_num ))
                 cur_buttons="${last_page_buttons}"
                 ;;
             'newest')
