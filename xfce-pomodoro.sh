@@ -6,8 +6,6 @@ declare -g PROJECT
 declare -g DEBUG
 declare -g NOTIFY_ONLY
 declare -g DIR="$(dirname $0)"
-declare -g REAL_LOG="${DIR}/.pomodoro.log"
-declare -g DEBUG_LOG="${DIR}/.DEBUG.log"
 declare -g DATE="$(date +%F)"
 declare -g LOG_MSG='Work sessions today%s:'
 
@@ -115,7 +113,6 @@ parse_args() {
                 ;;
             '-n'|'--notify')
                 NOTIFY_ONLY='true'
-                LOG="${REAL_LOG}"
                 shift
                 ;;
             '-h'|'--help')
@@ -335,21 +332,24 @@ main() {
 
     check_dependencies
 
+    # Parse command arguments and assign args related globals
+    parse_args "${@}"
+
     # Run in debug mode when executed from terminal
-    if [ ! -t 0 ]; then
-        LOG="${REAL_LOG}"
-    else
+    if [ -n "${NOTIFY_ONLY}" ]; then
+        LOG="${DIR}/.pomodoro.log"
         DEBUG=ON
-        LOG="${DEBUG_LOG}"
+    elif [ -t 0 ]; then
+        LOG="${DIR}/.DEBUG.log"
+        DEBUG=ON
+    else
+        LOG="${DIR}/.pomodoro.log"
     fi
 
     # First time usage or DEBUG mode, touch LOG
     if [ ! -e ${LOG} ]; then
         touch ${LOG}
     fi
-
-    # Parse command arguments and assign args related globals
-    parse_args "${@}"
 
     # Add project (if any) to log msg
     LOG_MSG="$(printf -- "${LOG_MSG}" "${PROJECT}")"
