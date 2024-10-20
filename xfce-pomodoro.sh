@@ -206,10 +206,14 @@ notify_finish() {
 
         msg+=$'\n\n'
 
-        if (( todo > 0 )); then
-            msg+="<b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>."
-        else
+        if (( SESSIONS_DONE * 2 <= SESSION_GOAL )); then
+            msg+="<b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>.\nA good start!"
+        elif (( todo > 0 )); then
+            msg+="<b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>.\nKeep going!"
+        elif (( SESSIONS_DONE * 100 <= SESSION_GOAL * 133 )); then
             msg+="CONGRATULATIONS! You reached the goal: <b>${SESSION_GOAL}</b>."
+        else
+            msg+="CRAZY MODE!!! You did <b>$(( -todo ))</b> more than needed..."
         fi
     fi
 
