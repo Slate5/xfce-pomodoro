@@ -316,7 +316,7 @@ notify_stats() {
                 fi
                 ;;
             'oldest')
-                (( step = (total_log_lines / lines_num + 1) * lines_num ))
+                (( step = ((total_log_lines - 1) / lines_num + 1) * lines_num ))
                 cur_buttons="${last_page_buttons}"
                 ;;
             'newest')
