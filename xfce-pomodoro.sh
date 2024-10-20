@@ -13,7 +13,7 @@ declare -g LOG_MSG='Work sessions today%s:'
 declare -g TIME_FRAME_MSG
 declare -g GOAL_DATE="${DATE}"
 declare -g ICON='xfce-pomodoro'
-declare -gi WEEKEND_PCT
+declare -gi WEEKEND_SESSIONS
 declare -gi SESSION_GOAL=0
 declare -gi SESSIONS_DONE=0
 
@@ -46,7 +46,7 @@ parse_args() {
     local args exit_code
 
     args="$(getopt -o d:wms:p:nh \
-                   -l day:,week,month,sessions:,project:,weekend-pct:,notify,help \
+                   -l day:,week,month,sessions:,project:,weekend-sessions:,notify,help \
                    -n "$(basename "${0}")" -- "${@}")"
 
     if (( (exit_code=$?) != 0 )); then
@@ -103,12 +103,12 @@ parse_args() {
                 PROJECT=" (${2})"
                 shift 2
                 ;;
-            '--weekend-pct')
+            '--weekend-sessions')
                 if [[ ! ${2} =~ ^[0-9]+$ ]]; then
-                    abort_msg 'Weekend percentage has to be a positive integer' 22
+                    abort_msg 'Weekend goal has to be a positive integer' 22
                 fi
 
-                WEEKEND_PCT=${2}
+                WEEKEND_SESSIONS=${2}
                 shift 2
                 ;;
             '-n'|'--notify')
@@ -134,22 +134,14 @@ parse_args() {
             TIME_FRAME_MSG='today'
         fi
 
-        if [[ -n "${WEEKEND_PCT}" && "${TIME_FRAME_MSG}" != 'today' ]]; then
-            abort_msg 'Weekend percentage makes sense only when `-d 1`' 22
+        if [[ -n "${WEEKEND_SESSIONS}" && "${TIME_FRAME_MSG}" != 'today' ]]; then
+            abort_msg 'Weekend goal makes sense only when `-d 1`' 22
         fi
-    elif [ -n "${TIME_FRAME_MSG}" -o -n "${WEEKEND_PCT}" ]; then
-        abort_msg 'Flags [-d|-w|-m|--weekend-pct] depend on `-s`' 22
+    elif [ -n "${TIME_FRAME_MSG}" -o -n "${WEEKEND_SESSIONS}" ]; then
+        abort_msg 'Flags [-d|-w|-m|--weekend-sessions] depend on `-s`' 22
     else
         TIME_FRAME_MSG='today'
     fi
-}
-
-adjust_goal_weekend() {
-    # Use awk for floating-point arithmetics
-    SESSION_GOAL=$(awk "
-                    BEGIN {
-                        printf \"%.0f\", ${SESSION_GOAL} * (${WEEKEND_PCT} / 100)
-                    }")
 }
 
 get_session_total() {
@@ -380,9 +372,9 @@ main() {
         paplay ${DIR}/assets/Gilfoyle_alarm.ogg &
     fi
 
-    # Modify session goal during weekends (--weekend-pct)
-    if [ -n "${WEEKEND_PCT}" ] && (( $(date +%u) > 5 )); then
-        adjust_goal_weekend
+    # Modify session goal during weekends (--weekend-sessions)
+    if [ -n "${WEEKEND_SESSIONS}" ] && (( $(date +%u) > 5 )); then
+        SESSION_GOAL=${WEEKEND_SESSIONS}
     fi
 
     # Get the number of finished sessions from log
@@ -415,7 +407,7 @@ main() {
 
     # Warn the user about .DEBUG.log if it's not needed any more
     if [ -n "${DEBUG}" -a -z "${NOTIFY_ONLY}" ]; then
-        printf "\033[35mFeel free to delete ${LOG}\033[m\n" >&2
+        printf "\033[35mFeel free to \033[3mrm -f ${LOG}\033[m\n" >&2
     fi
 }
 
