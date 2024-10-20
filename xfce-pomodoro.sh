@@ -18,7 +18,7 @@ declare -gi SESSION_GOAL=0
 declare -gi SESSIONS_DONE=0
 
 check_dependencies() {
-    for cmd in getopt awk notify-send paplay; do
+    for cmd in getopt awk notify-send paplay sed tac grep; do
         if ! command -v ${cmd} &>/dev/null; then
             abort_msg "Command not found: ${cmd}"
         fi
@@ -239,15 +239,16 @@ notify_confirm() {
 }
 
 notify_stats() {
-    local notify_args
-    local line_num=10
-    local step=${line_num}
+    local lines_num=10
+    local step=${lines_num}
+    local effective_lines_num
     local total_log_lines=$(wc -l ${LOG} | awk '{print $1}')
-    local total_log_pages=$(( (total_log_lines - 1) / line_num + 1 ))
+    local total_log_pages=$(( (total_log_lines - 1) / lines_num + 1 ))
     local log_lines
     local ret
 
     # Button sets depend on a current page and number of pages
+    local notify_args
     local first_page_buttons
     local mid_page_buttons
     local last_page_buttons
@@ -255,7 +256,7 @@ notify_stats() {
     local cur_buttons
     local page_num
 
-    case $(( (total_log_lines - 1) / line_num )) in
+    case $(( (total_log_lines - 1) / lines_num )) in
         0)  ;;
         1)
             first_page_buttons="-A older=Older"
@@ -274,11 +275,17 @@ notify_stats() {
     notify_args+='-h boolean:suppress-sound:true -A back=Back'
 
     while :; do
-        log_lines="$(tail -n ${step} ${LOG} | head -n ${line_num} |
-               sed -E 's,(.*:\s*)([0-9]+),\1 <b>\2</b>\t\t,')"
+        if (( step <= total_log_lines )); then
+            effective_lines_num=${lines_num}
+        else
+            effective_lines_num=$(( total_log_lines - (step - lines_num) ))
+        fi
 
-        if (( total_log_lines > line_num )); then
-            page_num=" ($(( step / line_num ))/${total_log_pages})"
+        log_lines="$(tail -n ${step} ${LOG} | head -n ${effective_lines_num} |
+                     sed -E 's,(.*:\s*)([0-9]+),\1 <b>\2</b>\t\t,' | tac)"
+
+        if (( total_log_lines > lines_num )); then
+            page_num=" ($(( step / lines_num ))/${total_log_pages})"
         fi
 
         if (( total_log_lines == 0 )); then
@@ -290,7 +297,7 @@ notify_stats() {
 
         case "${ret}" in
             'older')
-                (( step += line_num ))
+                (( step += lines_num ))
 
                 if (( step >= total_log_lines )); then
                     cur_buttons="${last_page_buttons}"
@@ -299,20 +306,20 @@ notify_stats() {
                 fi
                 ;;
             'newer')
-                (( step -= line_num ))
+                (( step -= lines_num ))
 
-                if (( step == line_num )); then
+                if (( step == lines_num )); then
                     cur_buttons="${first_page_buttons}"
                 else
                     cur_buttons="${mid_page_buttons}"
                 fi
                 ;;
             'oldest')
-                (( step = (total_log_lines / line_num + 1) * line_num ))
+                (( step = (total_log_lines / lines_num + 1) * lines_num ))
                 cur_buttons="${last_page_buttons}"
                 ;;
             'newest')
-                (( step = line_num ))
+                (( step = lines_num ))
                 cur_buttons="${first_page_buttons}"
                 ;;
             'back')
@@ -413,3 +420,4 @@ main() {
 
 # Call main()
 main "${@}"
+
