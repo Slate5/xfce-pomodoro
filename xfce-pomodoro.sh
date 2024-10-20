@@ -62,7 +62,7 @@ parse_args() {
                 if [ -n "${TIME_FRAME_MSG}" ]; then
                     abort_msg 'Time frame can be specified only once' 22
                 elif [[ ! ${2} =~ ^[0-9]+$ ]] || (( ${2} == 0 )); then
-                    abort_msg 'Number of days has to be integer bigger than 0' 22
+                    abort_msg 'Number of days has to be an integer bigger than 0' 22
                 fi
 
                 if (( ${2} == 1 )); then
@@ -93,7 +93,7 @@ parse_args() {
                 ;;
             '-s'|'--sessions')
                 if [[ ! ${2} =~ ^[0-9]+$ ]] || (( ${2} == 0 )); then
-                    abort_msg 'Session count has to be integer bigger than 0' 22
+                    abort_msg 'Session count has to be an integer bigger than 0' 22
                 fi
 
                 SESSION_GOAL=${2}
@@ -105,7 +105,7 @@ parse_args() {
                 ;;
             '--weekend-pct')
                 if [[ ! ${2} =~ ^[0-9]+$ ]]; then
-                    abort_msg 'Weekend percentage has to be positive integer' 22
+                    abort_msg 'Weekend percentage has to be a positive integer' 22
                 fi
 
                 WEEKEND_PCT=${2}
@@ -135,7 +135,7 @@ parse_args() {
         fi
 
         if [[ -n "${WEEKEND_PCT}" && "${TIME_FRAME_MSG}" != 'today' ]]; then
-            abort_msg 'Weekend percentage makes only sense when `-d 1`' 22
+            abort_msg 'Weekend percentage makes sense only when `-d 1`' 22
         fi
     elif [ -n "${TIME_FRAME_MSG}" -o -n "${WEEKEND_PCT}" ]; then
         abort_msg 'Flags [-d|-w|-m|--weekend-pct] depend on `-s`' 22
@@ -189,9 +189,9 @@ notify_finish() {
 
     notify_args+="-a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true '
-    notify_args+='-A close=Close -A stats=Stats '
+    notify_args+='-A close=❌⠀Close -A stats=📊⠀Stats '
     if [ -z "${NOTIFY_ONLY}" ]; then
-        notify_args+='-A discard=Discard '
+        notify_args+=$'-A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F⠀Discard '
     fi
     notify_args+='-- Pomodoro'
 
@@ -207,13 +207,13 @@ notify_finish() {
         msg+=$'\n\n'
 
         if (( SESSIONS_DONE * 2 <= SESSION_GOAL )); then
-            msg+="<b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>.\nA good start!"
+            msg+="🔴 <b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>."
         elif (( todo > 0 )); then
-            msg+="<b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>.\nKeep going!"
+            msg+="🟡 <b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>."
         elif (( SESSIONS_DONE * 100 <= SESSION_GOAL * 133 )); then
-            msg+="CONGRATULATIONS! You reached the goal: <b>${SESSION_GOAL}</b>."
+            msg+="🟢 CONGRATULATIONS! You reached the goal: <b>${SESSION_GOAL}</b>."
         else
-            msg+="CRAZY MODE!!! You did <b>$(( -todo ))</b> more than needed..."
+            msg+="💥 CRAZY MODE!!! You did <b>$(( -todo ))</b> more than needed..."
         fi
     fi
 
@@ -226,7 +226,8 @@ notify_confirm() {
 
     notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true '
-    notify_args+='-A back=Back -A discard=Yes -A close=No -- Pomodoro'
+    notify_args+=$'-A back=⮜⠀Back -A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F⠀Yes '
+    notify_args+='-A close=📌⠀No -- Pomodoro'
 
     while :; do
         ret="$(notify-send ${notify_args} $'\n<b>Discard last session?</b>\n')"
@@ -247,7 +248,7 @@ notify_stats() {
     local log_lines
     local ret
 
-    # Button sets depend on a current page and number of pages
+    # Button sets depend on the current page and number of pages
     local notify_args
     local first_page_buttons
     local mid_page_buttons
@@ -259,20 +260,20 @@ notify_stats() {
     case $(( (total_log_lines - 1) / lines_num )) in
         0)  ;;
         1)
-            first_page_buttons="-A older=Older"
-            last_page_buttons="-A newer=Newer"
+            first_page_buttons="-A older=◀⠀Older"
+            last_page_buttons="-A newer=▶⠀Newer"
             ;;
         *)
-            first_page_buttons="-A older=Older -A oldest=Oldest"
-            mid_page_buttons="-A older=Older -A newer=Newer"
-            last_page_buttons="-A newest=Newest -A newer=Newer"
+            first_page_buttons="-A older=◀⠀Older -A oldest=◀◀⠀Oldest"
+            mid_page_buttons="-A older=◀⠀Older -A newer=▶⠀Newer"
+            last_page_buttons="-A newest=▶▶⠀Newest -A newer=▶⠀Newer"
             ;;
     esac
 
     cur_buttons="${first_page_buttons}"
 
     notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
-    notify_args+='-h boolean:suppress-sound:true -A back=Back'
+    notify_args+='-h boolean:suppress-sound:true -A back=⮜⠀Back'
 
     while :; do
         if (( step <= total_log_lines )); then
