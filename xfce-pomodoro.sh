@@ -314,6 +314,8 @@ notify_log() {
 notify_stats() {
     # Show X days before the date (excluding that date itself, 6 + 1)
     local show_days_num=6
+    local grid_lines='˙ ˙ ˙ ˙ '
+    local col_size=${#grid_lines}
     local mark_session='█████'
     local oldest_date="$(grep -om 1 $'^[^\t]\+' ${LOG})"
     local newest_date="$(awk 'END {print $1}' ${LOG})"
@@ -322,6 +324,7 @@ notify_stats() {
     local title
     declare -a table_arr
     local notify_table
+    local i j k
 
     # General notify-send options used
     local notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
@@ -351,14 +354,12 @@ notify_stats() {
                       print record
                   }'  ${LOG})
 
-    # Create title now that record is known
-    title="$(printf '%s%*s' 'Pomodoro STATS:' $(( (show_days_num - 1) * 8 )) "🏆 ${record}")"
-
     while :; do
+        local weekly_average=0
+
         # Create table_arr tamplate
         for (( i = 0; i <= record; ++i )); do
-            table_arr[i]="$(printf -- '˙ ˙ ˙ ˙ %.0s' $(seq 1 ${show_days_num}))"
-            table_arr[i]+='˙ ˙ ˙ ˙'
+            table_arr[i]="$(printf -- "${grid_lines}%.0s" $(seq 0 ${show_days_num}))"
         done
 
         # Add dates and fill up table_arr with sessions
@@ -368,36 +369,47 @@ notify_stats() {
 
             cur_date="$(date +'%F;%m/%d' -d "${starting_date} + ${j} days")"
             # Add current date to table bottom
-            table_arr[i]+="$(printf -- '%-8s' ${cur_date##*;})"
+            table_arr[i]+="$(printf -- '%*s' -${col_size} "${cur_date##*;}")"
 
             # Get total number of sessions for current date
             cur_max=$(awk -v dt="${cur_date%%;*}" '$1 == dt {sum+=$NF} END {print sum}' ${LOG})
+            (( weekly_average += cur_max ))
 
             # Insert mark_session in table_arr's rows
             for (( k = 0; k < cur_max; ++k )); do
-                idx=$(( j * 8 + 1 ))
+                idx=$(( j * col_size + 1 ))
                 idx_after=$(( idx + ${#mark_session} ))
                 row=$(( record - k ))
                 table_arr[row]="${table_arr[row]::idx}${mark_session}${table_arr[row]:idx_after}"
             done
 
             # Add number cur_max on the top of the session count in the table
-            idx=$(( j * 8 + ${#mark_session} - ${#cur_max} - 1 ))
+            idx=$(( j * col_size + ${#mark_session} - ${#cur_max} - 1 ))
             idx_after=$(( idx + ${#cur_max} ))
             row=$(( record - k ))
             table_arr[row]="${table_arr[row]::idx}${cur_max}${table_arr[row]:idx_after}"
         done
 
+        weekly_average=$(awk -v wa=${weekly_average} -v sdn=${show_days_num} '
+                            BEGIN {
+                                printf "%.2f", wa / (sdn + 1)
+                            }')
+
+        # Create title now that record and week average are known
+        title="$(printf -- 'Pomodoro STATS:\t\t%s%s\t\t\t%s' \
+                                "x̄ ${weekly_average}" \
+                                "$(printf '⠀%.0s' $(seq ${#weekly_average} 6))" \
+                                "🏆 ${record}")"
+
         # Prepare notify_table for notify-send
-        notify_table="<span font='dejavu sans mono book'><b>"
+        notify_table=$'\n<span font="dejavu sans mono book"><b>'
         for (( i = 0; i <= record + 1; ++i )); do
             notify_table+="${table_arr[i]}"$'\n'
         done
         notify_table+='</b></span>'
-        unset i j k
 
         ret="$(notify-send ${notify_args} ${cur_buttons} \
-               -- "${title}" $'\n'"${notify_table}")"
+               -- "${title}" "${notify_table}")"
 
         case "${ret}" in
             'older')
