@@ -168,7 +168,7 @@ log_result() {
     # Escape potential (regex) special characters
     local msg_esc="${LOG_MSG//[\(\)\[\]\{\}\^\$\*\+\?]/\\&}"
 
-    # Log total number of sessions completed
+    # Log total number of completed sessions
     if ! grep -qE "^${DATE}\s*${msg_esc}\s*" ${LOG}; then
         echo -e "${DATE}\t${LOG_MSG} 1" >> ${LOG}
     else
@@ -187,14 +187,14 @@ notify_finish() {
 
     notify_args+="-a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true '
-    notify_args+='-A close=❌⠀Close '
+    notify_args+='-A close=❌ Close '
     if [ -s ${LOG} ]; then
-        notify_args+='-A log=📜⠀Log -A stats=📊⠀Stats '
+        notify_args+='-A log=📜 Log -A stats=📊 Stats '
     else
         msg+=$'Come back when you start doing something...\n'
     fi
     if [ -z "${NOTIFY_ONLY}" ]; then
-        notify_args+=$'-A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F⠀Discard '
+        notify_args+=$'-A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F Discard '
     fi
     notify_args+='-- Pomodoro'
 
@@ -209,14 +209,32 @@ notify_finish() {
 
         msg+=$'\n\n'
 
-        if (( SESSIONS_DONE * 2 <= SESSION_GOAL )); then
-            msg+="🔴 <b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>."
+        if (( SESSIONS_DONE * 3 < SESSION_GOAL )); then
+            msg+="<span color='#ff443a' font='20px'><b>🔴 ${todo} left</b></span>\n"
+            msg+="to reach the goal of <b>${SESSION_GOAL}</b>."
+        elif (( SESSIONS_DONE * 3 < SESSION_GOAL * 2 )); then
+            msg+="<span color='#ff9800' font='20px'><b>🟠 ${todo} left</b></span>\n"
+            msg+="to reach the goal of <b>${SESSION_GOAL}</b>."
         elif (( todo > 0 )); then
-            msg+="🟡 <b>${todo}</b> left to reach the goal of <b>${SESSION_GOAL}</b>."
-        elif (( SESSIONS_DONE * 100 <= SESSION_GOAL * 133 )); then
-            msg+="🟢 CONGRATULATIONS! You reached the goal: <b>${SESSION_GOAL}</b>."
+            msg+="<span color='#ffcc32' font='20px'><b>🟡 ${todo} left</b></span>\n"
+            msg+="to reach the goal of <b>${SESSION_GOAL}</b>."
+        elif (( SESSIONS_DONE * 100 <= SESSION_GOAL * 110 )); then
+            msg+="<span color='#7cb342' font='20px'><b>🟢 CONGRATULATIONS!</b></span>\n"
+            msg+="You reached the goal: <span color='#a0c37b'><b>${SESSION_GOAL}</b></span>."
+        elif (( SESSIONS_DONE * 100 <= SESSION_GOAL * 125 )); then
+            msg+="<span color='#f2a258' font='20px'><b>🐻 BEAST MODE!</b></span>\n"
+            msg+="You <i>smashed</i> <span color='#aa8972'><b>$(( -todo ))</b></span> more...\n"
+            msg+="Will you stop already?"
+        elif (( SESSIONS_DONE * 100 <= SESSION_GOAL * 150 )); then
+            msg+="<span color='#e7950b' font='20px'><b>💥 CRAZY MODE!</b></span>\n"
+            msg+="You <i>over-did</i> <span color='#e7db71'><b>$(( -todo ))</b></span> "
+            msg+="more than needed...\n"
+            msg+="Are you alright?"
         else
-            msg+="💥 CRAZY MODE!!! You did <b>$(( -todo ))</b> more than needed..."
+            msg+="<span color='#e7b92d' font='20px'><b>⚡ GOD MODE!</b></span>\n"
+            msg+="<span color='#a7c4f4'><b>Sky is not the limit...</b></span>\n"
+            msg+="Let alone <span color='#e7d164'><b>$(( -todo ))</b></span> puny extra sessions!\n"
+            msg+="But even <i>gods</i> need a nap..."
         fi
     fi
 
@@ -244,20 +262,21 @@ notify_log() {
     case $(( (total_log_lines - 1) / lines_num )) in
         0)  ;;
         1)
-            first_page_buttons='-A older=◀⠀Older'
-            last_page_buttons='-A newer=▶⠀Newer'
+            first_page_buttons='-A older=◀ Older'
+            last_page_buttons='-A newer=▶ Newer'
             ;;
         *)
-            first_page_buttons='-A oldest=◀◀⠀Oldest -A older=◀⠀Older -A 🚫⠀Newer -A 🚫⠀Newest'
-            mid_page_buttons='-A oldest=◀◀⠀Oldest -A older=◀⠀Older -A newer=▶⠀Newer -A newest=▶▶⠀Newest'
-            last_page_buttons='-A 🚫⠀Oldest -A 🚫⠀Older -A newer=▶⠀Newer -A newest=▶▶⠀Newest'
+            first_page_buttons='-A oldest=◀◀ Oldest -A older=◀ Older -A 🚫 Newer -A 🚫 Newest'
+            mid_page_buttons='-A oldest=◀◀ Oldest -A older=◀ Older '
+            mid_page_buttons+='-A newer=▶ Newer -A newest=▶▶ Newest'
+            last_page_buttons='-A 🚫 Oldest -A 🚫 Older -A newer=▶ Newer -A newest=▶▶ Newest'
             ;;
     esac
 
     cur_buttons="${first_page_buttons}"
 
     notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
-    notify_args+='-h boolean:suppress-sound:true -A back=⮜⠀Back'
+    notify_args+='-h boolean:suppress-sound:true -A back=⮜ Back'
 
     while :; do
         if (( step <= total_log_lines )); then
@@ -312,7 +331,7 @@ notify_log() {
 }
 
 notify_stats() {
-    # Show X days before the date (excluding that date itself, 6 + 1)
+    # Graph X number of days on the left of a certain date (excluding that date itself, 6 + 1)
     local show_days_num=6
     local grid_lines='˙ ˙ ˙ ˙ '
     local col_size=${#grid_lines}
@@ -328,12 +347,13 @@ notify_stats() {
 
     # General notify-send options used
     local notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
-    notify_args+='-h boolean:suppress-sound:true -A back=⮜⠀Back'
+    notify_args+='-h boolean:suppress-sound:true -A back=⮜ Back'
 
     # Button sets depend on the currently visible dates
-    local newest_date_buttons='-A 7older=◀◀⠀7⠀Older -A older=◀⠀Older -A 🚫⠀Newer -A     🚫⠀7⠀Newer'
-    local mid_date_buttons='-A 7older=◀◀⠀7⠀Older -A older=◀⠀Older -A newer=▶⠀Newer -A 7newer=▶▶⠀7⠀Newer'
-    local oldest_date_buttons='-A 🚫⠀7⠀Older -A 🚫⠀Older -A newer=▶⠀Newer -A 7newer=▶▶⠀7⠀Newer'
+    local newest_date_buttons='-A 7older=◀◀ 7 Older -A older=◀ Older -A 🚫 Newer -A 🚫 7 Newer'
+    local mid_date_buttons='-A 7older=◀◀ 7 Older -A older=◀ Older '
+    local mid_date_buttons+='-A newer=▶ Newer -A 7newer=▶▶ 7 Newer'
+    local oldest_date_buttons='-A 🚫 7 Older -A 🚫 Older -A newer=▶ Newer -A 7newer=▶▶ 7 Newer'
     # Holds current set of buttons
     local cur_buttons
 
@@ -341,7 +361,7 @@ notify_stats() {
         cur_buttons="${newest_date_buttons}"
     fi
 
-    # The best score user has, used as a row number (+1) in final table
+    # The best score the user has, used as a row number (+1) in the final table
     record=$(awk '{
                      sum[$1] += $NF
                   }
@@ -357,10 +377,10 @@ notify_stats() {
     while :; do
         local weekly_average=0
 
-        # Create table_arr tamplate
+        # Create table_arr template
         for (( i = 0; i <= record; ++i )); do
             table_arr[i]="$(printf -- "${grid_lines}%.0s" $(seq 0 ${show_days_num}))"
-            # Centralize somewhat the table (compenzate for ICON space on the left)
+            # Centralize somewhat the table (compensate for ICON space on the left)
             # 3 tabs would make left (ICON) and right spacing equal...
             table_arr[i]+=$'\t\t'
         done
@@ -401,7 +421,7 @@ notify_stats() {
         # Create title now that record and week average are known
         title="$(printf -- 'Pomodoro STATS:\t\t%s%s\t\t\t%s' \
                                 "x̄ ${weekly_average}" \
-                                "$(printf '⠀%.0s' $(seq ${#weekly_average} 6))" \
+                                "$(printf ' %.0s' $(seq ${#weekly_average} 6))" \
                                 "🏆 ${record}")"
 
         # Prepare notify_table for notify-send
@@ -469,8 +489,8 @@ notify_discard() {
 
     notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true '
-    notify_args+=$'-A back=⮜⠀Back -A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F⠀Yes '
-    notify_args+='-A close=📌⠀No -- Pomodoro'
+    notify_args+=$'-A back=⮜ Back -A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F Yes '
+    notify_args+='-A close=📌 No -- Pomodoro'
 
     while :; do
         ret="$(notify-send ${notify_args} $'\n<b>Discard last session?</b>\n')"
@@ -522,9 +542,9 @@ main() {
     # Add project (if any) to log msg
     LOG_MSG="$(printf -- "${LOG_MSG}" "${PROJECT}")"
 
-    # Store the result and notify with sound only when the `-n` flag isn't used
+    # Store the result and notify with a sound only when the `-n` flag isn't used
     if [ -z "${NOTIFY_ONLY}" ]; then
-        # Log by having one uniqe result per day and/or per project
+        # Log by having one unique result per day and/or per project
         log_result
 
         # Gently prompt the user that the session has ended
@@ -569,7 +589,8 @@ main() {
 
     # Warn the user about .DEBUG.log if it's not needed any more
     if [ -n "${DEBUG}" -a -z "${NOTIFY_ONLY}" ]; then
-        printf "\033[35mFeel free to \033[3mrm -f ${LOG}\033[m\n" >&2
+        printf '\033[35mFeel free:\033[m\n' >&2
+        printf "  \033[3;35mrm -f ${LOG}\033[m\n" >&2
     fi
 }
 
