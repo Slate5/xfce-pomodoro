@@ -360,10 +360,13 @@ notify_stats() {
         # Create table_arr tamplate
         for (( i = 0; i <= record; ++i )); do
             table_arr[i]="$(printf -- "${grid_lines}%.0s" $(seq 0 ${show_days_num}))"
+            # Centralize somewhat the table (compenzate for ICON space on the left)
+            # 3 tabs would make left (ICON) and right spacing equal...
+            table_arr[i]+=$'\t\t'
         done
 
         # Add dates and fill up table_arr with sessions
-        table_arr[i]=' '
+        table_arr[i]=' '    # Centralize dates row
         for (( j = 0; j <= show_days_num; ++j )); do
             local cur_date cur_max idx idx_after row
 
