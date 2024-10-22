@@ -18,11 +18,17 @@ declare -gi SESSION_GOAL=0
 declare -gi SESSIONS_DONE=0
 
 check_dependencies() {
-    for cmd in getopt awk notify-send paplay sed tac grep; do
+    for cmd in getopt awk notify-send paplay sed tac grep seq; do
         if ! command -v ${cmd} &>/dev/null; then
             abort_msg "Command not found: ${cmd}"
         fi
     done
+
+    if command -v fc-list &>/dev/null; then
+        if ! fc-list | grep -qi emoji; then
+            abort_msg 'Pomodoro wants emoji ;(, are they installed?'
+        fi
+    fi
 }
 
 help_text() {
@@ -46,7 +52,8 @@ parse_args() {
     local args exit_code
 
     args="$(getopt -o d:wms:p:nh \
-                   -l day:,week,month,sessions:,project:,weekend-sessions:,notify,help \
+                   -l day:,week,month,sessions:,project: \
+                   -l weekend-sessions:,notify,help \
                    -n "$(basename "${0}")" -- "${@}")"
 
     if (( (exit_code=$?) != 0 )); then
@@ -150,12 +157,11 @@ get_session_total() {
 
     SESSIONS_DONE=$(awk -v date="${GOAL_DATE}" '
                         $1 >= date && $0 ~ /'"${msg_esc}"'/ {
-                            sum+=$NF
+                            sum += $NF
                         }
                         END {
                             printf "%d", sum
-                        }
-                    ' ${LOG})
+                        }' ${LOG})
 }
 
 log_result() {
@@ -181,7 +187,12 @@ notify_finish() {
 
     notify_args+="-a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true '
-    notify_args+='-A close=❌⠀Close -A stats=📊⠀Stats '
+    notify_args+='-A close=❌⠀Close '
+    if [ -s ${LOG} ]; then
+        notify_args+='-A log=📜⠀Log -A stats=📊⠀Stats '
+    else
+        msg+=$'Come back when you start doing something...\n'
+    fi
     if [ -z "${NOTIFY_ONLY}" ]; then
         notify_args+=$'-A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F⠀Discard '
     fi
@@ -212,27 +223,9 @@ notify_finish() {
     notify-send ${notify_args} "${msg}"$'\n'
 }
 
-notify_confirm() {
-    local notify_args
-    local ret
-
-    notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
-    notify_args+='-h boolean:suppress-sound:true '
-    notify_args+=$'-A back=⮜⠀Back -A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F⠀Yes '
-    notify_args+='-A close=📌⠀No -- Pomodoro'
-
-    while :; do
-        ret="$(notify-send ${notify_args} $'\n<b>Discard last session?</b>\n')"
-
-        if [ -n "${ret}" ]; then
-            echo "${ret}"
-            return
-        fi
-    done
-}
-
-notify_stats() {
+notify_log() {
     local lines_num=10
+    local page_num
     local step=${lines_num}
     local effective_lines_num
     local total_log_lines=$(wc -l ${LOG} | awk '{print $1}')
@@ -247,18 +240,17 @@ notify_stats() {
     local last_page_buttons
     # Holds current set of buttons
     local cur_buttons
-    local page_num
 
     case $(( (total_log_lines - 1) / lines_num )) in
         0)  ;;
         1)
-            first_page_buttons="-A older=◀⠀Older"
-            last_page_buttons="-A newer=▶⠀Newer"
+            first_page_buttons='-A older=◀⠀Older'
+            last_page_buttons='-A newer=▶⠀Newer'
             ;;
         *)
-            first_page_buttons="-A older=◀⠀Older -A oldest=◀◀⠀Oldest"
-            mid_page_buttons="-A older=◀⠀Older -A newer=▶⠀Newer"
-            last_page_buttons="-A newest=▶▶⠀Newest -A newer=▶⠀Newer"
+            first_page_buttons='-A oldest=◀◀⠀Oldest -A older=◀⠀Older -A 🚫⠀Newer -A 🚫⠀Newest'
+            mid_page_buttons='-A oldest=◀◀⠀Oldest -A older=◀⠀Older -A newer=▶⠀Newer -A newest=▶▶⠀Newest'
+            last_page_buttons='-A 🚫⠀Oldest -A 🚫⠀Older -A newer=▶⠀Newer -A newest=▶▶⠀Newest'
             ;;
     esac
 
@@ -278,15 +270,11 @@ notify_stats() {
                      sed -E 's,(.*:\s*)([0-9]+),\1 <b>\2</b>\t\t,' | tac)"
 
         if (( total_log_lines > lines_num )); then
-            page_num=" ($(( step / lines_num ))/${total_log_pages})"
-        fi
-
-        if (( total_log_lines == 0 )); then
-            log_lines="Didn't even start and you <i>already</i> expect results..."
+            page_num="($(( step / lines_num ))/${total_log_pages})"
         fi
 
         ret="$(notify-send ${notify_args} ${cur_buttons} \
-               -- "Pomodoro LOG${page_num}:" $'\n'"${log_lines}"$'\n')"
+               -- "Pomodoro LOG ${page_num}:" $'\n'"${log_lines}"$'\n')"
 
         case "${ret}" in
             'older')
@@ -320,6 +308,162 @@ notify_stats() {
                 return
                 ;;
         esac
+    done
+}
+
+notify_stats() {
+    # Show X days before the date (excluding that date itself, 6 + 1)
+    local show_days_num=6
+    local mark_session='█████'
+    local oldest_date="$(grep -om 1 $'^[^\t]\+' ${LOG})"
+    local newest_date="$(awk 'END {print $1}' ${LOG})"
+    local starting_date="$(date +%F -d "${newest_date} - ${show_days_num} days")"
+    local record
+    local title
+    declare -a table_arr
+    local notify_table
+
+    # General notify-send options used
+    local notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
+    notify_args+='-h boolean:suppress-sound:true -A back=⮜⠀Back'
+
+    # Button sets depend on the currently visible dates
+    local newest_date_buttons='-A 7older=◀◀⠀7⠀Older -A older=◀⠀Older -A 🚫⠀Newer -A     🚫⠀7⠀Newer'
+    local mid_date_buttons='-A 7older=◀◀⠀7⠀Older -A older=◀⠀Older -A newer=▶⠀Newer -A 7newer=▶▶⠀7⠀Newer'
+    local oldest_date_buttons='-A 🚫⠀7⠀Older -A 🚫⠀Older -A newer=▶⠀Newer -A 7newer=▶▶⠀7⠀Newer'
+    # Holds current set of buttons
+    local cur_buttons
+
+    if (( $(date +%s -d ${oldest_date}) < $(date +%s -d ${starting_date}) )); then
+        cur_buttons="${newest_date_buttons}"
+    fi
+
+    # The best score user has, used as a row number (+1) in final table
+    record=$(awk '{
+                     sum[$1] += $NF
+                  }
+                  END {
+                      for (date in sum) {
+                          if (sum[date] > record) {
+                              record = sum[date]
+                          }
+                      }
+                      print record
+                  }'  ${LOG})
+
+    # Create title now that record is known
+    title="$(printf '%s%*s' 'Pomodoro STATS:' $(( (show_days_num - 1) * 8 )) "🏆 ${record}")"
+
+    while :; do
+        # Create table_arr tamplate
+        for (( i = 0; i <= record; ++i )); do
+            table_arr[i]="$(printf -- '˙ ˙ ˙ ˙ %.0s' $(seq 1 ${show_days_num}))"
+            table_arr[i]+='˙ ˙ ˙ ˙'
+        done
+
+        # Add dates and fill up table_arr with sessions
+        table_arr[i]=' '
+        for (( j = 0; j <= show_days_num; ++j )); do
+            local cur_date cur_max idx idx_after row
+
+            cur_date="$(date +'%F;%m/%d' -d "${starting_date} + ${j} days")"
+            # Add current date to table bottom
+            table_arr[i]+="$(printf -- '%-8s' ${cur_date##*;})"
+
+            # Get total number of sessions for current date
+            cur_max=$(awk -v dt="${cur_date%%;*}" '$1 == dt {sum+=$NF} END {print sum}' ${LOG})
+
+            # Insert mark_session in table_arr's rows
+            for (( k = 0; k < cur_max; ++k )); do
+                idx=$(( j * 8 + 1 ))
+                idx_after=$(( idx + ${#mark_session} ))
+                row=$(( record - k ))
+                table_arr[row]="${table_arr[row]::idx}${mark_session}${table_arr[row]:idx_after}"
+            done
+
+            # Add number cur_max on the top of the session count in the table
+            idx=$(( j * 8 + ${#mark_session} - ${#cur_max} - 1 ))
+            idx_after=$(( idx + ${#cur_max} ))
+            row=$(( record - k ))
+            table_arr[row]="${table_arr[row]::idx}${cur_max}${table_arr[row]:idx_after}"
+        done
+
+        # Prepare notify_table for notify-send
+        notify_table="<span font='dejavu sans mono book'><b>"
+        for (( i = 0; i <= record + 1; ++i )); do
+            notify_table+="${table_arr[i]}"$'\n'
+        done
+        notify_table+='</b></span>'
+        unset i j k
+
+        ret="$(notify-send ${notify_args} ${cur_buttons} \
+               -- "${title}" $'\n'"${notify_table}")"
+
+        case "${ret}" in
+            'older')
+                starting_date="$(date +%F -d "${starting_date} - 1 day")"
+
+                if [[ "${starting_date}" == "${oldest_date}" ]]; then
+                    cur_buttons="${oldest_date_buttons}"
+                else
+                    cur_buttons="${mid_date_buttons}"
+                fi
+                ;;
+            'newer')
+                starting_date="$(date +%F -d "${starting_date} + 1 day")"
+                local ending_date="$(date +%F -d "${starting_date} + ${show_days_num} days")"
+
+                if [[ "${ending_date}" == "${newest_date}" ]]; then
+                    cur_buttons="${newest_date_buttons}"
+                else
+                    cur_buttons="${mid_date_buttons}"
+                fi
+                ;;
+            '7older')
+                starting_date="$(date +%F -d "${starting_date} - 7 day")"
+
+                if (( $(date +%s -d ${oldest_date}) >= $(date +%s -d ${starting_date}) )); then
+                    starting_date="${oldest_date}"
+                    cur_buttons="${oldest_date_buttons}"
+                else
+                    cur_buttons="${mid_date_buttons}"
+                fi
+                ;;
+            '7newer')
+                starting_date="$(date +%F -d "${starting_date} + 7 day")"
+                local ending_date="$(date +%F -d "${starting_date} + ${show_days_num} days")"
+
+                if (( $(date +%s -d ${newest_date}) <= $(date +%s -d ${ending_date}) )); then
+                    starting_date="$(date +%F -d "${newest_date} - ${show_days_num} days")"
+                    cur_buttons="${newest_date_buttons}"
+                else
+                    cur_buttons="${mid_date_buttons}"
+                fi
+                ;;
+            'back')
+                echo "${ret}"
+                return
+                ;;
+        esac
+    done
+}
+
+notify_discard() {
+    local notify_args
+    local ret
+
+    notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
+    notify_args+='-h boolean:suppress-sound:true '
+    notify_args+=$'-A back=⮜⠀Back -A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F⠀Yes '
+    notify_args+='-A close=📌⠀No -- Pomodoro'
+
+    while :; do
+        ret="$(notify-send ${notify_args} $'\n<b>Discard last session?</b>\n')"
+
+        if [ -n "${ret}" ]; then
+            echo "${ret}"
+            return
+        fi
     done
 }
 
@@ -386,7 +530,7 @@ main() {
 
         case "${notify_ret}" in
             'discard')
-                notify_ret="$(notify_confirm)"
+                notify_ret="$(notify_discard)"
 
                 if [[ "${notify_ret}" == 'back' ]]; then
                     continue
@@ -395,6 +539,9 @@ main() {
                 fi
 
                 break
+                ;;
+            'log')
+                notify_ret="$(notify_log)"
                 ;;
             'stats')
                 notify_ret="$(notify_stats)"
