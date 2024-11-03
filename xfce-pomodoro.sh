@@ -187,7 +187,7 @@ notify_finish() {
 
     notify_args+="-a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true '
-    notify_args+='-A close=❌ Close '
+    notify_args+='-A close=❌ '
     if [ -s ${LOG} ]; then
         notify_args+='-A log=📜 Log -A stats=📊 Stats '
     else
@@ -276,7 +276,7 @@ notify_log() {
     cur_buttons="${first_page_buttons}"
 
     notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
-    notify_args+='-h boolean:suppress-sound:true -A back=⮜ Back'
+    notify_args+='-h boolean:suppress-sound:true -A close=❌ -A back=🢀'
 
     while :; do
         if (( step <= total_log_lines )); then
@@ -322,7 +322,7 @@ notify_log() {
                 (( step = lines_num ))
                 cur_buttons="${first_page_buttons}"
                 ;;
-            'back')
+            'back'|'close')
                 echo "${ret}"
                 return
                 ;;
@@ -347,7 +347,7 @@ notify_stats() {
 
     # General notify-send options used
     local notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
-    notify_args+='-h boolean:suppress-sound:true -A back=⮜ Back'
+    notify_args+='-h boolean:suppress-sound:true -A close=❌ -A back=🢀'
 
     # Button sets depend on the currently visible dates
     local newest_date_buttons='-A 7older=◀◀ 7 Older -A older=◀ Older -A 🚫 Newer -A 🚫 7 Newer'
@@ -475,7 +475,7 @@ notify_stats() {
                     cur_buttons="${mid_date_buttons}"
                 fi
                 ;;
-            'back')
+            'back'|'close')
                 echo "${ret}"
                 return
                 ;;
@@ -489,7 +489,7 @@ notify_discard() {
 
     notify_args="-e -t 0 -a Pomodoro -c Tools -i ${ICON} "
     notify_args+='-h boolean:suppress-sound:true '
-    notify_args+=$'-A back=⮜ Back -A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F Yes '
+    notify_args+=$'-A back=🢀 -A discard=\xF0\x9F\x97\x91\xEF\xB8\x8F Yes '
     notify_args+='-A close=📌 No -- Pomodoro'
 
     while :; do
@@ -571,15 +571,22 @@ main() {
                     continue
                 elif [[ "${notify_ret}" == 'discard' ]]; then
                     discard_result
+                    break
+                elif [[ "${notify_ret}" == 'close' ]]; then
+                    break
                 fi
-
-                break
                 ;;
             'log')
                 notify_ret="$(notify_log)"
+                if [[ "${notify_ret}" == 'close' ]]; then
+                    break
+                fi
                 ;;
             'stats')
                 notify_ret="$(notify_stats)"
+                if [[ "${notify_ret}" == 'close' ]]; then
+                    break
+                fi
                 ;;
             *)
                 break
